@@ -149,40 +149,101 @@
 
         // --- Core Functions ---
 
-        async function newGame() {
-            messageElement.textContent = "載入中...";
+        // --- Sudoku Logic Engine ---
+        class SudokuGenerator {
+            constructor() {
+                this.board = Array(9).fill().map(() => Array(9).fill(0));
+            }
+
+            isValid(board, row, col, num) {
+                for (let x = 0; x < 9; x++) if (board[row][x] === num) return false;
+                for (let x = 0; x < 9; x++) if (board[x][col] === num) return false;
+                let startRow = row - (row % 3), startCol = col - (col % 3);
+                for (let i = 0; i < 3; i++) {
+                    for (let j = 0; j < 3; j++) {
+                        if (board[i + startRow][j + startCol] === num) return false;
+                    }
+                }
+                return true;
+            }
+
+            solve(board) {
+                for (let row = 0; row < 9; row++) {
+                    for (let col = 0; col < 9; col++) {
+                        if (board[row][col] === 0) {
+                            let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+                            nums.sort(() => Math.random() - 0.5);
+                            for (let num of nums) {
+                                if (this.isValid(board, row, col, num)) {
+                                    board[row][col] = num;
+                                    if (this.solve(board)) return true;
+                                    board[row][col] = 0;
+                                }
+                            }
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            generatePuzzle(diff) {
+                this.board = Array(9).fill().map(() => Array(9).fill(0));
+                this.solve(this.board);
+                let fullSolution = this.board.map(row => [...row]);
+
+                let attempts;
+                if (diff === "easy") attempts = 81 - (Math.floor(Math.random() * 6) + 40);
+                else if (diff === "medium") attempts = 81 - (Math.floor(Math.random() * 6) + 30);
+                else attempts = 81 - (Math.floor(Math.random() * 7) + 22);
+
+                let puzzle = fullSolution.map(row => [...row]);
+                while (attempts > 0) {
+                    let r = Math.floor(Math.random() * 9);
+                    let c = Math.floor(Math.random() * 9);
+                    if (puzzle[r][c] !== 0) {
+                        puzzle[r][c] = 0;
+                        attempts--;
+                    }
+                }
+                return { puzzle, solution: fullSolution };
+            }
+        }
+
+        const generator = new SudokuGenerator();
+
+        // --- Core Functions ---
+
+        function newGame() {
+            isSolverMode = false; // 強制結束求解模式
+            messageElement.textContent = "正在生成題目...";
             stopTimer();
             endTutorial();
             isPaused = false;
             pauseOverlay.classList.add('hidden');
             document.querySelectorAll('.pause-btn').forEach(btn => btn.innerText = '⏸');
 
-            try {
-                const response = await fetch(`http://127.0.0.1:5000/api/game?difficulty=${difficulty}`);
-                const result = await response.json();
+            // Using local generator instead of fetch
+            setTimeout(() => {
+                const result = generator.generatePuzzle(difficulty);
+                initialBoard = result.puzzle;
+                solution = result.solution;
+                currentBoard = JSON.parse(JSON.stringify(initialBoard));
 
-                if (result.status === "success") {
-                    initialBoard = result.data.puzzle;
-                    solution = result.data.solution;
-                    currentBoard = JSON.parse(JSON.stringify(initialBoard));
+                notesBoard = Array(9).fill().map(() => Array(9).fill().map(() => new Set()));
+                historyStack = [];
+                mistakes = 0;
+                selectedCell = null;
+                isGameWon = false;
+                timeElapsed = 0;
 
-                    notesBoard = Array(9).fill().map(() => Array(9).fill().map(() => new Set()));
-                    historyStack = [];
-                    mistakes = 0;
-                    selectedCell = null;
-                    isGameWon = false;
-                    timeElapsed = 0;
-
-                    updateMistakesDisplay();
-                    updateTimerDisplay();
-                    renderBoard();
-                    startTimer();
-                    messageElement.textContent = "";
-                    saveGameState();
-                }
-            } catch (error) {
-                messageElement.textContent = "無法連接到伺服器。";
-            }
+                updateMistakesDisplay();
+                updateTimerDisplay();
+                renderBoard();
+                startTimer();
+                messageElement.textContent = "";
+                saveGameState();
+            }, 100);
         }
 
         function renderBoard() {
@@ -692,31 +753,26 @@
             document.querySelectorAll('.new-game-btn').forEach(el => el.classList.remove('hidden'));
             document.getElementById('solver-actions').classList.add('hidden');
             document.getElementById('btn-notes').classList.remove('hidden');
-            document.querySelector('.action-btn[onclick="startTutorialHint()"]').classList.remove('hidden');
+            
+            const hintBtn = document.querySelector('.action-btn[onclick="startTutorialHint()"]');
+            if (hintBtn) hintBtn.classList.remove('hidden');
             
             newGame();
         }
 
-        async function solvePuzzle() {
+        function solvePuzzle() {
             messageElement.textContent = "正在計算中...";
-            try {
-                const response = await fetch('http://127.0.0.1:5000/api/solve', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ puzzle: currentBoard })
-                });
-                const result = await response.json();
-                if (result.status === "success") {
-                    currentBoard = result.data.solution;
-                    solution = result.data.solution;
+            setTimeout(() => {
+                let boardToSolve = JSON.parse(JSON.stringify(currentBoard));
+                if (generator.solve(boardToSolve)) {
+                    currentBoard = boardToSolve;
+                    solution = JSON.parse(JSON.stringify(boardToSolve));
                     messageElement.textContent = "解題完成！";
                     renderBoard();
                 } else {
                     messageElement.textContent = "此盤面無解，請檢查輸入。";
                 }
-            } catch (error) {
-                messageElement.textContent = "無法連接到伺服器。";
-            }
+            }, 100);
         }
 
         // Start initialization
