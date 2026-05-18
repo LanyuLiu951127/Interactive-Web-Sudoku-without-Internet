@@ -1,138 +1,180 @@
-# 系統分析 (SA.md)
+# 系統架構說明書 (SA.md)
 
-## 1. 專案目錄結構規劃
-為了確保開發的條理性，專案將分為前端 (Frontend) 與後端 (Backend) 兩個主要部分：
+## 1. 專案目錄結構 (Folder & Files Architecture)
+專案嚴格遵循前後端分離（Separation of Concerns）架構，使前端靜態資源與後端商業邏輯目錄清晰劃分，以便於 FileZilla FTP 部署與管理：
 
 ```text
 數獨/
-├── backend/                # Python 後端目錄
-│   ├── main.py             # API 進入點 (FastAPI/Flask)
-│   ├── generator.py        # 數獨生成與求解核心邏輯
-│   └── requirements.txt    # 依賴套件清單
-├── frontend/               # 前端網頁目錄
-│   ├── index.html          # 主頁面
-│   ├── css/
-│   │   └── style.css       # 樣式表
-│   ├── js/
-│   │   ├── script.js       # 遊戲互動與狀態管理邏輯
-│   │   └── api.js          # 負責與後端通訊的封裝
-│   └── sw.js               # Service Worker (離線支援)
-└── doc/                    # 專案文件
-    ├── REQ.md
-    ├── SA.md
-    ├── SD.md
-    └── spec.md
+├── frontend/               # 前端靜態資源與 UI/UX 目錄
+│   ├── index.html          # 數獨主入口 (整合登入彈窗、規則面板、求解器)
+│   ├── admin.html          # 🛡️ 數獨安全防護管理系統 v2.0 - 後台主控台
+│   ├── style.css           # 包含前台與高級 Glassmorphic 後台專用樣式表
+│   ├── script.js           # 前台數獨演算法引擎、Session 動態驗證 UI 邏輯
+│   └── admin.js            # 🛡️ 後台控制、分頁切換、用戶/日誌管理交互邏輯
+├── backend/                # 後端安全 PHP 業務邏輯目錄
+│   ├── db_connect.php      # 嚴格異常報告與 UTF-8 連線配置
+│   ├── register.php        # 註冊 API (密碼 Bcrypt 雜湊加密 + 註冊日誌)
+│   ├── login.php           # 登入 API (防暴力破解與狀態檢查、維護模式攔截)
+│   ├── check_session.php   # Session 狀態檢查 (提供前端 F5 刷新持久化)
+│   ├── logout.php          # 登出 API (銷毀 Session)
+│   ├── admin_dashboard.php # 🛡️ 後台管理核心 API (權限變更、狀態停用、密碼重設、維護開關)
+│   ├── init_admin.php      # 系統最高管理員 Bcrypt 雜湊與表結構升級腳本
+│   └── init_db.sql         # 相容 MariaDB 10.11 資料庫初始化腳本
+└── doc/                    # 系統規格書目錄 (單一事實來源)
+    ├── REQ.md              # 需求規格說明書
+    ├── SA.md               # 系統架構說明書
+    ├── SD.md               # 系統設計說明書
+    └── spec.md             # 開發與部署規範
 ```
 
-## 2. 單機運作架構 (Standalone Architecture)
-本專案支援單機運作，後端負責繁重的題目生成運算，前端負責即時互動與進度保存。
+---
 
-### 2.1 後端 Python 矩陣回傳機制
-後端採用輕量化 API 格式。Python 將生成的 9x9 數獨盤面轉換為 JSON 格式回傳給前端。
+## 2. 全端多使用者架構 (Full-Stack Multi-User Architecture)
 
-*   **資料格式**: 使用二維陣列（Nested List），`0` 表示空白格。
-*   **Python 實作範例思路**:
-    ```python
-    # backend/main.py
-    from fastapi import FastAPI
-    import generator
+系統採用經典的 **B/S 架構 (Browser-Server)**。前端透過非同步 `Fetch API` 向後端 PHP 請求 JSON 資料。
 
-    app = FastAPI()
+```mermaid
+graph TD
+    Browser[瀏覽器前端 frontend/script.js] -- Fetch HTTPS / JSON --> WebServer[學校伺服器 PHP 8.4]
+    WebServer -- Prepared Statements --> MariaDB[(MariaDB 10.11 資料庫)]
+    
+    subgraph Frontend Logic
+        Browser --> LocalStorage[LocalStorage: 存檔/設定]
+        Browser --> LocalBacktracking[客戶端回溯演算法: 生成/求解]
+    end
+    
+    subgraph Backend Security
+        WebServer --> PHPSession[PHP Session Manager: 身份驗證]
+        WebServer --> Bcrypt[Bcrypt Hash: 密碼防護]
+    end
+```
 
-    @app.get("/api/game")
-    def get_game(difficulty: str = "easy"):
-        # 呼叫生成邏輯得到 9x9 矩陣
-        puzzle, solution = generator.generate(difficulty)
-        return {
-            "status": "success",
-            "data": {
-                "puzzle": puzzle,    # 例如: [[5,3,0,...], [6,0,0,...], ...]
-                "solution": solution # 完整的正確解答
-            }
-        }
+---
 
-        @app.post("/api/solve")
-        def solve_puzzle(data: dict):
-        # 接收前端傳來的盤面，並回傳計算出的解答
-        puzzle = data.get("puzzle")
-        board_to_solve = [row[:] for row in puzzle]
-        if generator.solve(board_to_solve):
-            return {"status": "success", "data": {"solution": board_to_solve}}
-        return {"status": "error", "message": "Unsolvable"}
-        ```
+## 3. 資料庫實體關係模型 (MariaDB 10.11 Database Schema)
 
-        ### 2.2 前端 script.js 狀態儲存機制
-        為實現離線遊玩與進度保存，前端需在玩家每次輸入或遊戲狀態改變時，將數據持久化。
+為滿足使用者角色權限、好友系統、防作弊、日誌監控與全局一鍵維護需求，資料庫設計如下 5 張核心資料表，使用 `utf8mb4_unicode_ci` 編碼：
 
-        *   **儲存媒介**: 瀏覽器 `localStorage`。
-        *   **儲存內容**: 包含目前的盤面 (Current Board)、原始題目 (Initial Puzzle)、解答 (Solution)、計時時間。
-        *   **求解器模式 (Solver Mode)**: 透過一個全域變數 `isSolverMode` 來切換介面狀態。當處於此模式時，會隱藏計時器與錯誤標示，並將盤面初始化為空白。
-        *   **儲存時機**: 每次填入數字、進行復原/清除、或是計時器每隔 5 秒鐘，都會觸發自動存檔機制。不需登入帳號。
-        *   **script.js 實作邏輯**:
-        ```javascript
-        let isSolverMode = false; // 用於標記目前是否為「求解器模式」
-
-        // 切換至求解器模式
-        function startSolverMode() {
-        isSolverMode = true;
-        // ... 清除盤面與隱藏計時器 ...
-        }
-
-        // 呼叫後端求解 API
-        async function solvePuzzle() {
-        const response = await fetch('/api/solve', {
-            method: 'POST',
-            body: JSON.stringify({ puzzle: currentBoard })
-        });
-        // ... 處理回傳結果 ...
-        }
-
-        // 保存狀態
-        function saveGameState() {
-        if (isSolverMode) return; // 求解模式下不執行自動存檔，以免覆蓋正常遊戲
-        const gameState = {
-            currentBoard: board,       // 玩家填寫後的 9x9 陣列
-            // ... 其餘狀態 ...
-        };
-        localStorage.setItem('sudoku_save_game', JSON.stringify(gameState));
-        }
-        ```
-    // 載入狀態 (初始化時呼叫)
-    function loadGameState() {
-        const saved = localStorage.getItem('sudoku_save_game');
-        if (saved) {
-            return JSON.parse(saved);
-        }
-        return null;
+```mermaid
+erDiagram
+    users ||--o{ game_records : "has"
+    users ||--o{ friends : "relates"
+    users ||--o{ system_logs : "records"
+    
+    users {
+        int id PK "AUTO_INCREMENT"
+        varchar username "UNIQUE, 帳號"
+        varchar password "Bcrypt Hash 密碼"
+        enum role "standard, power, admin"
+        enum status "active, suspended, blocked"
+        timestamp created_at
     }
     
-    // 設定保存與載入
-    function updateSettings() {
-        // 儲存玩家設定的輔助功能開關 (hideCompleted, highlightIdentical 等)
-        localStorage.setItem('sudoku_settings', JSON.stringify(userSettings));
+    system_config {
+        varchar config_key PK "設定鍵 (例如 'maintenance_mode')"
+        varchar config_value "設定值 (例如 '0' 或 '1')"
+        timestamp updated_at
     }
+    
+    game_records {
+        int id PK "AUTO_INCREMENT"
+        int user_id FK "ON DELETE CASCADE"
+        varchar difficulty "easy, medium, hard"
+        int time_spent "秒數"
+        int mistakes "錯誤次數"
+        text board_state "JSON 當前棋盤"
+        timestamp played_at
+    }
+    
+    friends {
+        int id PK "AUTO_INCREMENT"
+        int user_id FK "發送者"
+        int friend_id FK "接受者"
+        enum status "pending, accepted, blocked"
+        timestamp updated_at
+    }
+    
+    system_logs {
+        int id PK "AUTO_INCREMENT"
+        int user_id FK "操作關聯使用者 (可為 NULL)"
+        varchar action "login, register, cheat_attempt, privilege_escalation"
+        varchar ip_address "連線來源 IP"
+        tinyint is_suspicious "1 表示異常/作弊，0 表示正常"
+        timestamp created_at
+    }
+```
+
+### 資料庫完整 SQL 腳本
+後端腳本 `backend/init_db.sql` 移除了 `CREATE DATABASE` 的提權語句，以完美相容學校主機無 root 權限的預配專屬同名資料庫環境，所有表可直接建立於 `st111534105`（或對應帳號資料庫）中。
+
+---
+
+## 4. 安全性架構：預處理陳述式 (mysqli Prepared Statements)
+
+為了防範 **SQL 注入漏洞**，後端所有與 MariaDB 的互動 **100% 採用 PHP mysqli 預處理陳述式**。
+
+### 4.1 資料庫連線配置 (`backend/db_connect.php`)
+實作安全捕獲 Connection 異常，並向前端隱藏任何涉及伺服器主機的敏感路徑資訊：
+```php
+<?php
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+try {
+    $conn = new mysqli("localhost", "st111534105", "st111534105", "st111534105");
+    $conn->set_charset("utf8mb4");
+} catch (Exception $e) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(["status" => "error", "message" => "資料庫連線失敗，請稍後再試。"]);
+    exit();
+}
+?>
+```
+
+### 4.2 預處理陳述式寫法範本
+```php
+$stmt = $conn->prepare("SELECT id, password, role FROM users WHERE username = ?");
+$stmt->bind_param("s", $username);
+$stmt->execute();
+$result = $stmt->get_result();
+```
+
+---
+
+## 5. 身份驗證與狀態持久化架構 (Session Management)
+
+本專案採用 **PHP 原生 Session 驗證機制 (`$_SESSION`)** 來維護登入狀態：
+1.  **登入成功時**：後端在伺服器寫入用戶 Session：
+    ```php
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['role'] = $user['role'];
     ```
+2.  **狀態保留 (F5 刷新)**：前端網頁加載時，自動調用 `backend/check_session.php`。該 API 會檢查當前連線之 Session，若有效則回傳 `{ "logged_in": true, "user": { "username": "...", "role": "..." } }`。
+3.  **前端狀態接收與渲染**：
+    *   前端收到 Session 資料後，存入變數 `currentUser`。
+    *   依據 role 分別套用 `badge-standard` (綠色)、`badge-power` (藍色) 或 `badge-admin` (金色) 漸層配色，以極致奢華的 HSL UI 呈現身份。
 
-## 3. 核心演算法分析
+---
 
-### 3.0 互動教學提示演算法 (Guided Hint State Machine)
-*   當觸發提示時，計算目標格子的「同行、同列、同宮格」已存在的數字 (`rowNums`, `colNums`, `boxNums`)。
-*   計算聯集 (`allPresent`) 並反向求出剩餘可能數字 (`possibleNums`)。
-*   使用狀態機 (`tutorialState.step`) 推進 4 個教學步驟：
-    1. 鎖定目標格子。
-    2. 高亮關聯區域（行、列、宮格）。
-    3. 紅色高亮關聯區域內已存在的數字。
-    4. 顯示最終推導出的答案並提供填入功能。
+## 6. 管理員權限防護 (RBAC) 與維護模式架構邏輯 [NEW]
 
+為了保障平台的高安全係數與運行穩定，系統在前後端皆實作了健全的 RBAC 與全域維護模式攔截邏輯：
 
-### 3.1 數獨生成演算法
-*   **完整盤面生成**: 使用「回溯法 (Backtracking)」從空盤面開始隨機填入數字，並確保符合數獨規則，直到生成一個完整的 9x9 盤面。
-*   **合法性檢查**: 在填入每個數字時，檢查該數字在同行、同列、同 3x3 宮格內是否唯一。
+### 6.1 管理者角色型存取控制 (RBAC 防禦層)
+*   **前端權限阻斷**：
+    - 當玩家開啟或直接於瀏覽器網址列輸入 `admin.html` 時，頁面在載入時會立即執行 `checkAdminAuth()`。
+    - 該函數會非同步請求 `backend/check_session.php`。若回傳的 `role` 欄位不為 `admin` 或未登入，前端會彈出越權存取警示，並自動退回至首頁。
+*   **後端 API 二次防禦**：
+    - 所有敏感數據的讀寫與管理操作一律導向 `backend/admin_dashboard.php`。
+    - 該 API 在入口處即時執行 `session_start()`，並強制比對 `$_SESSION['role'] === 'admin'`。
+    - 若驗證失敗，後端將不再執行任何 SQL 或設定變更，直接拋出 `403 Forbidden` 狀態碼並回傳 JSON 錯誤。這提供了雙重保險，有效防止惡意用戶透過工具越權請求。
 
-### 3.2 挖洞邏輯 (難度控制)
-*   從完整的盤面中隨機移除數字。
-*   **唯一解驗證**: 每移除一個數字，需透過求解器 (Solver) 驗證該盤面是否仍只有唯一解。若出現多重解，則該數字不可移除。
+### 6.2 系統一鍵維護模式 (Maintenance Mode)
+*   **全域維護狀態持久化**：
+    - 系統維護狀態儲存在 `system_config` 表中，以 `config_key = 'maintenance_mode'` 的紀錄進行管理，其 `config_value` 為 `1` (開啟) 或 `0` (關閉)。
+*   **入口攔截流 (PHP Entry Gate)**：
+    - 在 [login.php](file:///d:/democase/1/sudoku/backend/login.php) 與前台重要請求 API 中，後端會主動連線至 `system_config` 表查詢 `maintenance_mode`。
+    - 若開啟維護模式且嘗試操作的用戶角色不為 `admin`：
+      1. 後端立即設定 HTTP 狀態碼為 `503 Service Unavailable`。
+      2. 回傳特定 JSON 封包：`{"success": false, "message": "...", "maintenance": true}`。
+      3. 前端收到該 JSON 後，會自動阻斷使用者的進一步操作，並將畫面導向乾淨的維護提示看板，僅允許 `admin` 使用者自由登入調試。
 
-## 4. 離線機制分析
-*   **Service Worker**: 透過快取 HTML/JS/CSS 資源，實現離線開啟網頁。
-*   **LocalStorage**: 確保在離線狀態下，玩家重整頁面後仍能繼續上次的盤面。

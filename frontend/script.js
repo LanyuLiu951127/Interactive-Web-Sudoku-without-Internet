@@ -781,4 +781,262 @@
             if (!loadGameState()) {
                 newGame();
             }
+            checkSession(); // 載入頁面時自動檢查 Session 登入狀態
         };
+
+        // =================================================================
+        // 使用者註冊與登入身分驗證邏輯 (Authentication Logic)
+        // =================================================================
+        let currentUser = null;
+
+        function openAuthModal(mode) {
+            const overlay = document.getElementById('auth-overlay');
+            const actionInput = document.getElementById('auth-action');
+            const titleEl = document.getElementById('auth-title');
+            const submitBtn = document.getElementById('btn-auth-submit');
+            const toggleText = document.getElementById('auth-toggle-text');
+            const toggleLink = document.getElementById('auth-toggle-link');
+            const msgEl = document.getElementById('auth-message');
+            
+            // 重設欄位與訊息
+            document.getElementById('auth-username').value = '';
+            const pwdInput = document.getElementById('auth-password');
+            if (pwdInput) pwdInput.type = 'password';
+            const toggleBtn = document.getElementById('btn-toggle-password');
+            if (toggleBtn) toggleBtn.textContent = '👁️';
+            msgEl.className = 'auth-message hidden';
+            msgEl.textContent = '';
+            
+            actionInput.value = mode;
+            if (mode === 'login') {
+                titleEl.textContent = '登入帳戶';
+                submitBtn.textContent = '立即登入';
+                toggleText.textContent = '沒有帳號？';
+                toggleLink.textContent = '立即註冊';
+                toggleLink.onclick = () => openAuthModal('register');
+            } else {
+                titleEl.textContent = '註冊新帳戶';
+                submitBtn.textContent = '建立帳戶';
+                toggleText.textContent = '已經有帳號？';
+                toggleLink.textContent = '立即登入';
+                toggleLink.onclick = () => openAuthModal('login');
+            }
+            
+            overlay.classList.add('show');
+        }
+
+        function closeAuthModal() {
+            document.getElementById('auth-overlay').classList.remove('show');
+        }
+
+        function togglePasswordVisibility() {
+            const pwdInput = document.getElementById('auth-password');
+            const toggleBtn = document.getElementById('btn-toggle-password');
+            if (pwdInput && toggleBtn) {
+                if (pwdInput.type === 'password') {
+                    pwdInput.type = 'text';
+                    toggleBtn.textContent = '🔒';
+                } else {
+                    pwdInput.type = 'password';
+                    toggleBtn.textContent = '👁️';
+                }
+            }
+        }
+
+        function toggleAuthMode() {
+            const currentAction = document.getElementById('auth-action').value;
+            if (currentAction === 'login') {
+                openAuthModal('register');
+            } else {
+                openAuthModal('login');
+            }
+        }
+
+        async function handleAuthSubmit(event) {
+            event.preventDefault();
+            
+            const action = document.getElementById('auth-action').value;
+            const username = document.getElementById('auth-username').value.trim();
+            const password = document.getElementById('auth-password').value;
+            const msgEl = document.getElementById('auth-message');
+            const submitBtn = document.getElementById('btn-auth-submit');
+            
+            msgEl.className = 'auth-message hidden';
+            msgEl.textContent = '';
+            submitBtn.disabled = true;
+            const originalBtnText = submitBtn.textContent;
+            submitBtn.textContent = '處理中...';
+            
+            const apiUrl = action === 'login' ? '../backend/login.php' : '../backend/register.php';
+            
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json; charset=utf-8'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    msgEl.className = 'auth-message success';
+                    msgEl.textContent = data.message;
+                    
+                    if (action === 'register') {
+                        // 註冊成功，自動倒數後切換至登入
+                        setTimeout(() => {
+                            openAuthModal('login');
+                            document.getElementById('auth-username').value = username;
+                        }, 1500);
+                    } else {
+                        // 登入成功，儲存使用者狀態並更新介面
+                        currentUser = {
+                            id: data.user_id,
+                            username: data.username,
+                            role: data.role
+                        };
+                        updateAuthUI();
+                        setTimeout(() => {
+                            closeAuthModal();
+                        }, 1000);
+                    }
+                } else {
+                    msgEl.className = 'auth-message error';
+                    msgEl.textContent = data.message || '發生未知錯誤。';
+                }
+            } catch (error) {
+                msgEl.className = 'auth-message error';
+                msgEl.textContent = '網路連線或伺服器異常，請稍後再試。';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+        }
+
+        async function checkSession() {
+            try {
+                const response = await fetch('../backend/check_session.php');
+                const data = await response.json();
+                if (data.logged_in) {
+                    currentUser = {
+                        id: data.user_id,
+                        username: data.username,
+                        role: data.role
+                    };
+                } else {
+                    currentUser = null;
+                }
+            } catch (e) {
+                currentUser = null;
+            }
+            updateAuthUI();
+        }
+
+        async function handleLogout() {
+            try {
+                const response = await fetch('../backend/logout.php');
+                const data = await response.json();
+                if (data.success) {
+                    currentUser = null;
+                    updateAuthUI();
+                    messageElement.textContent = '已登出帳戶。';
+                }
+            } catch (error) {
+                currentUser = null;
+                updateAuthUI();
+            }
+        }
+
+        function updateAuthUI() {
+            const btnNavLogin = document.getElementById('btn-navbar-login');
+            const btnNavRegister = document.getElementById('btn-navbar-register');
+            const btnNavLogout = document.getElementById('btn-navbar-logout');
+            const userWelcome = document.getElementById('user-welcome-info');
+            const userDispName = document.getElementById('user-display-name');
+            const userDispRole = document.getElementById('user-display-role');
+            
+            const sidebarAuthBtns = document.getElementById('sidebar-auth-buttons');
+            const sidebarUserInfo = document.getElementById('sidebar-user-info');
+            const sidebarUsername = document.getElementById('sidebar-username');
+            const sidebarRole = document.getElementById('sidebar-role');
+            
+            if (currentUser) {
+                // 登入狀態：更新 Navbar
+                if (btnNavLogin) btnNavLogin.classList.add('hidden');
+                if (btnNavRegister) btnNavRegister.classList.add('hidden');
+                if (btnNavLogout) btnNavLogout.classList.remove('hidden');
+                if (userWelcome) userWelcome.style.display = 'flex';
+                if (userWelcome) userWelcome.classList.remove('hidden');
+                
+                if (userDispName) userDispName.textContent = currentUser.username;
+                
+                // 角色轉換與 CSS class 處理
+                let roleClass = 'role-standard';
+                let roleText = '普通玩家';
+                if (currentUser.role === 'admin') {
+                    roleClass = 'role-admin';
+                    roleText = '管理員';
+                } else if (currentUser.role === 'power') {
+                    roleClass = 'role-power';
+                    roleText = '資深玩家';
+                }
+                
+                if (userDispRole) {
+                    userDispRole.className = `user-role-badge ${roleClass}`;
+                    userDispRole.textContent = roleText;
+                }
+                
+                // 登入狀態：更新 Sidebar
+                if (sidebarAuthBtns) sidebarAuthBtns.classList.add('hidden');
+                if (sidebarUserInfo) sidebarUserInfo.classList.remove('hidden');
+                if (sidebarUsername) sidebarUsername.textContent = currentUser.username;
+                if (sidebarRole) {
+                    sidebarRole.textContent = roleText;
+                    sidebarRole.className = `user-role-badge ${roleClass}`;
+                    sidebarRole.style.display = 'inline-block';
+                    sidebarRole.style.marginTop = '4px';
+                }
+
+                // 🛡️ 管理者權限按鈕控制
+                const btnNavAdmin = document.getElementById('btn-navbar-admin');
+                const sidebarAdminLink = document.getElementById('sidebar-admin-link');
+                if (currentUser.role === 'admin') {
+                    if (btnNavAdmin) btnNavAdmin.classList.remove('hidden');
+                    if (sidebarAdminLink) sidebarAdminLink.classList.remove('hidden');
+                } else {
+                    if (btnNavAdmin) btnNavAdmin.classList.add('hidden');
+                    if (sidebarAdminLink) sidebarAdminLink.classList.add('hidden');
+                }
+            } else {
+                // 未登入狀態：恢復 Navbar
+                if (btnNavLogin) btnNavLogin.classList.remove('hidden');
+                if (btnNavRegister) btnNavRegister.classList.remove('hidden');
+                if (btnNavLogout) btnNavLogout.classList.add('hidden');
+                if (userWelcome) userWelcome.classList.add('hidden');
+                if (userWelcome) userWelcome.style.display = 'none';
+                
+                // 未登入狀態：恢復 Sidebar
+                if (sidebarAuthBtns) sidebarAuthBtns.classList.remove('hidden');
+                if (sidebarUserInfo) sidebarUserInfo.classList.add('hidden');
+
+                // 隱藏管理員按鈕
+                const btnNavAdmin = document.getElementById('btn-navbar-admin');
+                const sidebarAdminLink = document.getElementById('sidebar-admin-link');
+                if (btnNavAdmin) btnNavAdmin.classList.add('hidden');
+                if (sidebarAdminLink) sidebarAdminLink.classList.add('hidden');
+            }
+        }
+
+        // =================================================================
+        // 管理者後台控制面板 JavaScript 邏輯 (Admin Dashboard Navigation)
+        // =================================================================
+        function openAdminPanel() {
+            if (!currentUser || currentUser.role !== 'admin') {
+                alert('安全性錯誤：您無權訪問此區域！');
+                return;
+            }
+            // 採用全新 2.0 規格，以新分頁開啟獨立專業主控台
+            window.open('admin.html', '_blank');
+        }

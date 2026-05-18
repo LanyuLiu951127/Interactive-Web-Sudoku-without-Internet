@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ 數獨安全防護管理系統 v2.0 - 後台主控台</title>
+    
+    <!-- Google Fonts 現代字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    
+    <!-- 引入主樣式表與專屬後台樣式 -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-portal-body">
+
+    <!-- 全螢幕磨砂玻璃後台容器 -->
+    <div class="admin-container">
+        
+        <!-- 1. 左側導覽列 Sidebar -->
+        <aside class="admin-sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-icon">🛡️</span>
+                <div class="brand-text">
+                    <h2>Sudoku Secure</h2>
+                    <span>管理安全主控台 v2.0</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="javascript:void(0)" class="nav-item active" id="nav-dashboard" onclick="switchTab('dashboard')">
+                    <span class="nav-icon">📊</span> 控制台總覽
+                </a>
+                <a href="javascript:void(0)" class="nav-item" id="nav-users" onclick="switchTab('users')">
+                    <span class="nav-icon">👥</span> 用戶權限管理
+                </a>
+                <a href="javascript:void(0)" class="nav-item" id="nav-logs" onclick="switchTab('logs')">
+                    <span class="nav-icon">🚨</span> 安全審計日誌
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="admin-user-card">
+                    <div class="avatar">👤</div>
+                    <div class="info">
+                        <div class="name" id="admin-name">管理員</div>
+                        <div class="badge-role">系統最高管理權限</div>
+                    </div>
+                </div>
+                <a href="index.html" class="back-game-btn">🎮 回到前台遊戲</a>
+            </div>
+        </aside>
+        
+        <!-- 2. 右側主內容區 Main Content -->
+        <main class="admin-main">
+            <!-- 頂部 Header -->
+            <header class="admin-header-bar">
+                <div class="header-title">
+                    <h1 id="view-title">控制台總覽</h1>
+                    <p id="view-desc">即時監控系統運行狀態、註冊人數與安全事件日誌。</p>
+                </div>
+                
+                <div class="header-actions">
+                    <span class="time-indicator" id="live-timer">2026-05-18 15:36</span>
+                    <button class="refresh-data-btn" onclick="fetchAdminData()">🔄 重整數據</button>
+                </div>
+            </header>
+            
+            <!-- 3. 分頁主要視窗 -->
+            <!-- TAB A: 數據看版總覽 -->
+            <section class="admin-tab-content" id="tab-dashboard">
+                <!-- 數據卡片行 -->
+                <div class="stats-grid">
+                    <div class="stat-glass-card">
+                        <div class="card-icon blue-icon">👥</div>
+                        <div class="card-data">
+                            <div class="value" id="stat-users">0</div>
+                            <div class="label">註冊玩家總數</div>
+                        </div>
+                        <div class="card-glow-bg blue-glow"></div>
+                    </div>
+                    
+                    <div class="stat-glass-card">
+                        <div class="card-icon purple-icon">🎮</div>
+                        <div class="card-data">
+                            <div class="value" id="stat-games">0</div>
+                            <div class="label">歷史遊戲局數</div>
+                        </div>
+                        <div class="card-glow-bg purple-glow"></div>
+                    </div>
+                    
+                    <div class="stat-glass-card red-warning-card">
+                        <div class="card-icon red-icon">⚠️</div>
+                        <div class="card-data">
+                            <div class="value" id="stat-cheats">0</div>
+                            <div class="label">安全稽核與攔截數</div>
+                        </div>
+                        <div class="card-glow-bg red-glow"></div>
+                    </div>
+                </div>
+                
+                <!-- 系統維護模式區 -->
+                <div class="maintenance-glass-panel">
+                    <div class="panel-details">
+                        <h3>⚙️ 系統一鍵維護模式 (Maintenance Mode)</h3>
+                        <p>啟用維護模式後，普通玩家登入或提交遊戲時將被安全引導至維護提示頁面，僅限管理員角色可登入並繞過阻斷，方便您在線上環境進行安全的資料庫變更與代碼調試。</p>
+                        <div class="maintenance-status-badge" id="maintenance-badge">運作正常</div>
+                    </div>
+                    
+                    <div class="panel-toggle">
+                        <label class="ios-switch">
+                            <input type="checkbox" id="maintenance-toggle-switch" onchange="toggleMaintenanceMode(this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                        <span class="toggle-text" id="toggle-label-text">維護模式：關閉</span>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- TAB B: 用戶權限管理 -->
+            <section class="admin-tab-content hidden" id="tab-users">
+                <div class="table-glass-card">
+                    <div class="table-card-header">
+                        <h3>👤 全系統用戶帳戶狀態與角色變更清單</h3>
+                        <div class="search-box">
+                            <input type="text" id="user-search-input" placeholder="🔍 搜尋用戶名稱..." oninput="filterUsersTable()">
+                        </div>
+                    </div>
+                    <div class="admin-table-scroll">
+                        <table class="admin-portal-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>帳號名稱</th>
+                                    <th>當前角色</th>
+                                    <th>帳號狀態</th>
+                                    <th>變更角色</th>
+                                    <th>帳號操作管理</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-tbody">
+                                <!-- JS 動態填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- TAB C: 安全審計日誌 -->
+            <section class="admin-tab-content hidden" id="tab-logs">
+                <div class="filter-glass-bar">
+                    <div class="filter-row">
+                        <div class="filter-item">
+                            <label>🔍 搜尋使用者</label>
+                            <input type="text" id="filter-log-user" placeholder="輸入用戶名稱..." oninput="filterLogs()">
+                        </div>
+                        <div class="filter-item">
+                            <label>⚡ 篩選行為類型</label>
+                            <select id="filter-log-action" onchange="filterLogs()">
+                                <option value="all">顯示全部行為</option>
+                                <option value="login_success">登入成功 (login_success)</option>
+                                <option value="login_failed">登入失敗 (login_failed)</option>
+                                <option value="login_failed_suspended">帳號停用攔截</option>
+                                <option value="login_failed_maintenance">維護模式阻斷</option>
+                                <option value="cheat_detected">偵測到作弊 (cheat_detected)</option>
+                                <option value="privilege_escalation_attempt">越權存取阻斷</option>
+                                <option value="role_change">權限角色變更</option>
+                                <option value="user_status_change">狀態停用/啟用</option>
+                                <option value="maintenance_mode_toggle">切換維護模式</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label>📅 時間範圍 (起)</label>
+                            <input type="date" id="filter-log-start" onchange="filterLogs()">
+                        </div>
+                        <div class="filter-item">
+                            <label>📅 時間範圍 (迄)</label>
+                            <input type="date" id="filter-log-end" onchange="filterLogs()">
+                        </div>
+                        <div class="filter-item btn-filter-item">
+                            <button class="suspicious-toggle-btn" id="btn-sus-logs" onclick="toggleSuspiciousLogsFilter()">僅顯示異常 ⚠️</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="table-glass-card" style="margin-top: 20px;">
+                    <div class="admin-table-scroll logs-scroll">
+                        <table class="admin-portal-table logs-portal-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 15%;">觸發時間</th>
+                                    <th style="width: 15%;">操作用戶</th>
+                                    <th style="width: 20%;">安全行為標記</th>
+                                    <th style="width: 50%;">連線IP及操作詳細稽核資料 (JSON 詳情)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logs-table-tbody">
+                                <!-- JS 動態填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- 4. 重設密碼互動式彈窗 (Reset Password Modal) -->
+    <div class="admin-modal-overlay" id="password-modal">
+        <div class="admin-modal-card">
+            <div class="modal-header">
+                <h3>🔑 重設用戶安全登入密碼</h3>
+                <button class="modal-close" onclick="closePasswordModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p>請為使用者 <strong id="modal-target-username" style="color:var(--primary-color);">admin_liu</strong> 設定新的登入密碼。重設後該密碼會立即被 Bcrypt 強制安全雜湊加密。</p>
+                <div class="input-group">
+                    <label>請輸入新密碼 (最少 4 個字元)</label>
+                    <input type="password" id="modal-new-password" placeholder="請輸入新密碼..." class="modal-pwd-input">
+                </div>
+                <input type="hidden" id="modal-target-userid">
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-cancel" onclick="closePasswordModal()">取消返回</button>
+                <button class="modal-btn modal-submit" onclick="submitPasswordReset()">確認重設密碼</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入後台交互腳本 -->
+    <script src="admin.js"></script>
+</body>
+</html>
